@@ -64,6 +64,10 @@ impl PdfCraftApp {
 
     /// Construct an application with the default session, panels, theme and control state.
     pub fn new() -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        let palette = craft_ui::theme::palette::Palette::load().map(|loaded| loaded.palette);
+        #[cfg(target_arch = "wasm32")]
+        let palette: Option<craft_ui::theme::palette::Palette> = None;
         Self {
             session: Session::new(),
             views: Vec::new(),
@@ -92,6 +96,9 @@ impl PdfCraftApp {
             theme: ThemeKind::Light,
             // A fresh install follows the desktop's appearance (#1248); saved settings override.
             theme_preference: ThemePreference::System,
+            palette,
+            #[cfg(not(target_arch = "wasm32"))]
+            palette_watcher: craft_ui::theme::palette::PaletteWatcher::from_env(),
             reading_colors: Default::default(),
             show_page_edge_shadows: true,
             #[cfg(target_os = "linux")]
@@ -460,7 +467,7 @@ impl eframe::App for PdfCraftApp {
             egui_extras::install_image_loaders(ctx);
             theme::install_fonts_for(ctx, cjk);
             self.fonts_cjk = cjk;
-            theme::apply(ctx, self.theme);
+            theme::apply_with_palette(ctx, self.theme, self.palette.as_ref());
             self.styled = true;
         } else {
             self.fonts_ready = true;

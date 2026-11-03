@@ -286,6 +286,107 @@ fn press_darkens_then_sinks() {
 }
 
 #[test]
+fn a_dark_palette_maps_the_core_chrome() {
+    let mut palette = Palette::dark();
+    palette.base[0] = Color32::from_rgb(0x10, 0x11, 0x12);
+    palette.base[1] = Color32::from_rgb(0x20, 0x21, 0x22);
+    palette.base[2] = Color32::from_rgb(0x30, 0x31, 0x32);
+    palette.base[3] = Color32::from_rgb(0x40, 0x41, 0x42);
+    palette.base[4] = Color32::from_rgb(0x80, 0x81, 0x82);
+    palette.base[5] = Color32::from_rgb(0xE0, 0xE1, 0xE2);
+    palette.base[13] = Color32::from_rgb(0x50, 0x90, 0xF0);
+    let t = Tokens::for_palette(ThemeKind::Dark, &palette);
+    assert_eq!(t.kind, ThemeKind::Dark);
+    assert_eq!(t.titlebar, palette.background());
+    assert_eq!(t.chrome, palette.surface());
+    assert_eq!(t.panel, palette.surface());
+    assert_eq!(t.card, palette.surface_alt());
+    assert_eq!(t.border, palette.outline());
+    assert_eq!(t.divider, palette.outline());
+    assert_eq!(t.text, palette.text());
+    assert_eq!(t.text_muted, palette.text_muted());
+    assert_eq!(t.icon, palette.text());
+    assert_eq!(t.hover, palette.surface_alt());
+    assert_eq!(t.accent, palette.accent());
+    assert_eq!(t.accent_soft, t.selected);
+    assert_eq!(t.field, palette.background());
+    assert_eq!(t.badge_new, palette.accent());
+    assert_eq!(t.pasteboard, Tokens::for_kind(ThemeKind::Dark).pasteboard, "document colours stay built-in");
+    assert_eq!(t.radius, Tokens::for_kind(ThemeKind::Dark).radius);
+}
+
+#[test]
+fn a_light_palette_maps_the_core_chrome() {
+    let mut palette = Palette::light();
+    palette.base[0] = Color32::from_rgb(0xF8, 0xF8, 0xF8);
+    palette.base[1] = Color32::from_rgb(0xEE, 0xEE, 0xEE);
+    palette.base[2] = Color32::from_rgb(0xE0, 0xE0, 0xE0);
+    palette.base[3] = Color32::from_rgb(0xB0, 0xB0, 0xB0);
+    palette.base[4] = Color32::from_rgb(0x70, 0x70, 0x70);
+    palette.base[5] = Color32::from_rgb(0x10, 0x10, 0x10);
+    palette.base[13] = Color32::from_rgb(0x0A, 0x62, 0xD0);
+    let t = Tokens::for_palette(ThemeKind::Light, &palette);
+    assert_eq!(t.kind, ThemeKind::Light);
+    assert_eq!(t.titlebar, palette.background());
+    assert_eq!(t.chrome, palette.surface());
+    assert_eq!(t.panel, palette.surface());
+    assert_eq!(t.card, palette.surface_alt());
+    assert_eq!(t.border, palette.outline());
+    assert_eq!(t.divider, palette.outline());
+    assert_eq!(t.text, palette.text());
+    assert_eq!(t.text_muted, palette.text_muted());
+    assert_eq!(t.icon, palette.text());
+    assert_eq!(t.hover, palette.surface_alt());
+    assert_eq!(t.accent, palette.accent());
+    assert_eq!(t.accent_soft, t.selected);
+    assert_eq!(t.field, palette.background());
+    assert_eq!(t.badge_new, palette.accent());
+    assert_eq!(t.pasteboard, Tokens::for_kind(ThemeKind::Light).pasteboard, "document colours stay built-in");
+    assert_eq!(t.radius, Tokens::for_kind(ThemeKind::Light).radius);
+}
+
+#[test]
+fn a_palette_family_overrides_a_mismatched_kind() {
+    let dark = Tokens::for_palette(ThemeKind::Light, &Palette::dark());
+    assert_eq!(dark.kind, ThemeKind::Dark);
+    assert_eq!(dark.pasteboard, Tokens::for_kind(ThemeKind::Dark).pasteboard);
+    assert!(dark.page_shadow.a() >= 120);
+    let light = Tokens::for_palette(ThemeKind::Dark, &Palette::light());
+    assert_eq!(light.kind, ThemeKind::Light);
+    assert_eq!(light.pasteboard, Tokens::for_kind(ThemeKind::Light).pasteboard);
+    assert!(light.page_shadow.a() < 120);
+}
+
+#[test]
+fn no_palette_keeps_the_built_in_tokens() {
+    let ctx = egui::Context::default();
+    for kind in [ThemeKind::Light, ThemeKind::Dark] {
+        apply_with_palette(&ctx, kind, None);
+        let applied = Tokens::get(&ctx);
+        let built_in = Tokens::for_kind(kind);
+        assert_eq!(applied.kind, kind);
+        assert_eq!(applied.chrome, built_in.chrome);
+        assert_eq!(applied.accent, built_in.accent);
+        assert_eq!(applied.pasteboard, built_in.pasteboard);
+    }
+}
+
+#[test]
+fn accent_text_reads_on_the_palette_surface() {
+    for mut palette in [Palette::dark(), Palette::light()] {
+        let kind = if palette.is_dark() { ThemeKind::Dark } else { ThemeKind::Light };
+        let t = Tokens::for_palette(kind, &palette);
+        assert!(contrast(t.accent_text, t.chrome) >= 3.0, "accent text on chrome: {:.2}:1", contrast(t.accent_text, t.chrome));
+        assert!(contrast(t.accent_text, t.card) >= 3.0, "accent text on card: {:.2}:1", contrast(t.accent_text, t.card));
+        // Even an accent that matches the surface resolves to readable accent text.
+        let surface = palette.surface();
+        palette.base[13] = surface;
+        let t = Tokens::for_palette(kind, &palette);
+        assert!(contrast(t.accent_text, t.chrome) >= 3.0, "{kind:?} low-contrast accent text: {:.2}:1", contrast(t.accent_text, t.chrome));
+    }
+}
+
+#[test]
 fn text_is_readable_on_every_surface() {
     // #76: the faintest text (hints, zoom level, captions) was 3.3:1 in the light theme.
     for kind in [ThemeKind::Light, ThemeKind::Dark] {

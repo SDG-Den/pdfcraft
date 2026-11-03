@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use craft_ui::theme::palette::Palette;
 use egui::epaint::text::{FallbackAlign, FontTweak, HintingTarget, SmoothHinting};
 use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Rect, Response, Stroke, Vec2, Visuals};
 
@@ -120,6 +121,42 @@ impl Tokens {
                 radius: 6,
             },
         }
+    }
+
+    /// The built-in tokens for `kind`, with the core chrome roles replaced by `palette`. The
+    /// palette's own light/dark family chooses the base, so a mismatched saved kind still gets
+    /// matching stock visuals and page shadows. Page, document and print colours stay from the
+    /// built-in set.
+    pub fn for_palette(kind: ThemeKind, palette: &Palette) -> Self {
+        let family = if palette.is_dark() { ThemeKind::Dark } else { ThemeKind::Light };
+        let mut t = Self::for_kind(kind);
+        if family != t.kind {
+            t = Self::for_kind(family);
+        }
+        let dark = palette.is_dark();
+        let surface = palette.surface();
+        let surface_alt = palette.surface_alt();
+        let soft = surface.lerp_to_gamma(palette.accent(), if dark { 0.30 } else { 0.16 });
+        t.titlebar = palette.background();
+        t.chrome = surface;
+        t.panel = surface;
+        t.card = surface_alt;
+        t.border = palette.outline();
+        t.divider = palette.outline();
+        t.text = palette.text();
+        t.text_muted = palette.text_muted();
+        t.text_faint = palette.text_muted().lerp_to_gamma(palette.background(), 0.35);
+        t.icon = palette.text();
+        t.hover = surface_alt;
+        t.pressed = surface_alt.lerp_to_gamma(palette.outline(), 0.5);
+        t.selected = soft;
+        t.accent = palette.accent();
+        t.accent_text = readable(palette.accent(), surface, palette.text());
+        t.accent_soft = soft;
+        t.field = palette.background();
+        t.badge_new = palette.accent();
+        t.page_shadow = Color32::from_black_alpha(if dark { 120 } else { 34 });
+        t
     }
 
     /// Return the cached theme tokens, falling back to the light palette before the first apply.
@@ -424,12 +461,18 @@ pub fn semibold(size: f32) -> FontId {
 
 /// Install the palette, widget styling, text sizes and right-to-left flag for the chosen theme.
 pub fn apply(ctx: &egui::Context, kind: ThemeKind) {
+    apply_with_palette(ctx, kind, None);
+}
+
+/// [`apply`] for a suite palette. When one is present its family owns the colours; `kind` only
+/// seeds the built-in base that [`Tokens::for_palette`] replaces.
+pub fn apply_with_palette(ctx: &egui::Context, kind: ThemeKind, palette: Option<&Palette>) {
     // Keep the native window inherited. A concrete egui theme pins macOS's
     // NSWindow appearance and prevents winit from delivering ThemeChanged.
     // Our saved choice owns the palette; both egui branches receive it below.
     ctx.set_theme(egui::ThemePreference::System);
     let rtl = crate::i18n::current().rtl();
-    let t = Tokens::for_kind(kind);
+    let t = palette.map_or_else(|| Tokens::for_kind(kind), |palette| Tokens::for_palette(kind, palette));
     ctx.data_mut(|d| d.insert_temp(egui::Id::unique("pdfcraft-theme"), t));
     let mut v = if t.dark() { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.panel;
