@@ -18,6 +18,12 @@
       url = "github:storytold/craft-fonts/b076417b5880bd4154bd22f00695b1d28c6bea83";
       flake = false;
     };
+
+    # Splits the dependency build from the app build, so a source change does not recompile the
+    # whole dependency graph.
+    crane = {
+      url = "github:ipetkov/crane";
+    };
   };
 
   outputs =
@@ -26,6 +32,7 @@
       nixpkgs,
       rust-overlay,
       craft-fonts,
+      crane,
     }:
     let
       inherit (nixpkgs) lib;
@@ -53,6 +60,13 @@
         inherit craft-fonts buildDate;
       };
 
+      # Written by `.github/workflows/binary.yml`; absent until the first binary release.
+      binaryInfo =
+        if builtins.pathExists ./binary-url.json then
+          builtins.fromJSON (builtins.readFile ./binary-url.json)
+        else
+          null;
+
       rustFor =
         pkgs:
         pkgs.rust-bin.stable."1.96.0".default.override {
@@ -68,10 +82,7 @@
         pkgs.callPackage ./nix/package.nix (
           packageArgs
           // {
-            rustPlatform = pkgs.makeRustPlatform {
-              cargo = rustFor pkgs;
-              rustc = rustFor pkgs;
-            };
+            craneLib = (crane.mkLib pkgs).overrideToolchain (rustFor pkgs);
           }
         );
 
@@ -86,13 +97,22 @@
     in
     {
       packages = forAllSystems (
-        pkgs: _:
+        pkgs: system:
         let
-          pdfcraft = mkPackage pkgs;
+          source = mkPackage pkgs;
+          binary = pkgs.callPackage ./nix/binary.nix {
+            name = "pdfcraft";
+            info = binaryInfo;
+          };
+          binaryAvailable = binaryInfo != null && binaryInfo.system == system;
         in
         {
-          inherit pdfcraft;
-          default = pdfcraft;
+          pdfcraft-source = source;
+          pdfcraft = if binaryAvailable then binary else source;
+          default = if binaryAvailable then binary else source;
+        }
+        // lib.optionalAttrs binaryAvailable {
+          pdfcraft-binary = binary;
         }
       );
 
@@ -114,7 +134,7 @@
       devShells = forAllSystems (
         pkgs: system:
         let
-          pdfcraft = self.packages.${system}.pdfcraft;
+          pdfcraft = self.packages.${system}.pdfcraft-source;
         in
         {
           default = pkgs.mkShell (
@@ -141,7 +161,7 @@
       checks = forAllSystems (
         pkgs: system:
         let
-          pdfcraft = self.packages.${system}.pdfcraft;
+          pdfcraft = self.packages.${system}.pdfcraft-source;
         in
         {
           pdfcraft = pdfcraft;
@@ -163,16 +183,28 @@
       # so `nixosModules.default`/`homeManagerModules.default` work without the overlay.
       nixosModules.default =
         { pkgs, ... }:
+        let
+          system = pkgs.stdenv.hostPlatform.system;
+        in
         {
           imports = [ (import ./nix/module.nix { kind = "nixos"; }) ];
-          _module.args.pdfcraftPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.pdfcraft;
+          _module.args = {
+            pdfcraftSourcePackage = self.packages.${system}.pdfcraft-source;
+            pdfcraftBinaryPackage = self.packages.${system}.pdfcraft-binary or null;
+          };
         };
 
       homeManagerModules.default =
         { pkgs, ... }:
+        let
+          system = pkgs.stdenv.hostPlatform.system;
+        in
         {
           imports = [ (import ./nix/module.nix { kind = "home-manager"; }) ];
-          _module.args.pdfcraftPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.pdfcraft;
+          _module.args = {
+            pdfcraftSourcePackage = self.packages.${system}.pdfcraft-source;
+            pdfcraftBinaryPackage = self.packages.${system}.pdfcraft-binary or null;
+          };
         };
     };
 }
