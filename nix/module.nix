@@ -16,6 +16,10 @@
   # The package of this flake; `flake.nix` passes it through `_module.args`, so importing the
   # module directly needs no overlay.
   pdfcraftPackage ? pkgs.pdfcraft,
+  # `flake.nix` passes the source build and the pre-built release binary separately. Importing the
+  # module directly falls back to `pdfcraftPackage` and no binary.
+  pdfcraftSourcePackage ? pdfcraftPackage,
+  pdfcraftBinaryPackage ? null,
   ...
 }:
 
@@ -42,10 +46,24 @@ in
   options.programs.pdfcraft = {
     enable = mkEnableOption "PdfCraft";
 
+    useBinary = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Install the pre-built Linux binary from `binary-url.json` when this system has one,
+        instead of building from source. Falls back to the source build when the file is missing
+        or the system is unsupported.
+      '';
+    };
+
     package = mkOption {
       type = types.package;
-      default = pdfcraftPackage;
-      defaultText = lib.literalMD "the `pdfcraft` package of this flake";
+      default =
+        if cfg.useBinary && pdfcraftBinaryPackage != null then
+          pdfcraftBinaryPackage
+        else
+          pdfcraftSourcePackage;
+      defaultText = lib.literalMD "the pre-built binary from `binary-url.json`, or the source build";
       description = "The PdfCraft package to install.";
     };
 
