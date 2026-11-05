@@ -25,11 +25,28 @@ impl PdfCraftApp {
                 system = desktop.get().map(|appearance| appearance == pdfcraft_platform::desktop_theme::DesktopAppearance::Dark);
             }
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        let palette_changed = self.poll_palette(ctx);
+        #[cfg(target_arch = "wasm32")]
+        let palette_changed = false;
         let kind = self.theme_preference.resolve(system, ThemeKind::Light);
-        if kind != self.theme {
-            self.theme = kind;
-            theme::apply(ctx, kind);
+        let family = self.palette.as_ref().map_or(kind, |palette| if palette.is_dark() { ThemeKind::Dark } else { ThemeKind::Light });
+        if family != self.theme || palette_changed {
+            self.theme = family;
+            theme::apply_with_palette(ctx, family, self.palette.as_ref());
         }
+    }
+
+    /// Poll the palette file only while the viewport is visible. A hidden window must not wake
+    /// every 400 ms just to look for an appearance change.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn poll_palette(&mut self, ctx: &egui::Context) -> bool {
+        if !ctx.input(|input| input.viewport().visible().unwrap_or(true)) {
+            return false;
+        }
+        let Some(loaded) = self.palette_watcher.poll(ctx) else { return false };
+        self.palette = Some(loaded.palette);
+        true
     }
 }
 

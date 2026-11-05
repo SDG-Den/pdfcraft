@@ -40,7 +40,7 @@ impl PdfCraftApp {
         self.theme_preference = preference;
         if let Some(ctx) = self.ctx.clone() {
             self.sync_theme(&ctx);
-            theme::apply(&ctx, self.theme);
+            theme::apply_with_palette(&ctx, self.theme, self.palette.as_ref());
         } else {
             self.theme = preference.resolve(None, ThemeKind::Light);
         }

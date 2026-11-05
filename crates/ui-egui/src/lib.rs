@@ -299,6 +299,11 @@ pub struct PdfCraftApp {
     /// Resolved colours, including the current OS theme when following the system.
     pub theme: ThemeKind,
     pub theme_preference: ThemePreference,
+    /// The shared suite palette, when one is present. Its family owns the chrome colours.
+    palette: Option<craft_ui::theme::palette::Palette>,
+    /// Watches the palette file so a change reapplies without a restart.
+    #[cfg(not(target_arch = "wasm32"))]
+    palette_watcher: craft_ui::theme::palette::PaletteWatcher,
     /// The reading-colours preference (Preferences ▸ Reading colours): applied to every open
     /// document, and documents open with it (Acrobat's Replace Document Colors).
     pub reading_colors: pdfcraft_render::ReadingColors,
